@@ -23,4 +23,4 @@ A lightweight **auto-clicker** built in **C# WPF**. Automate mouse clicks with s
 ### Building from Source
 
 ```bash
-git clone https://github.com/yourusername/AutoClicker-WPF.git
+git clone https://github.com/jespernapp/AutoClicker-WPF.git
