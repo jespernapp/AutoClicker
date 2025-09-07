@@ -13,13 +13,6 @@ A lightweight **auto-clicker** built in **C# WPF**. Automate mouse clicks with s
 
 ---
 
-## Screenshot
-
-![App Screenshot](images/screenshot.png)
-> Replace `images/screenshot.png` with the path to your screenshot inside the repo.
-
----
-
 ## Quick Start
 
 ### Using the Executable
