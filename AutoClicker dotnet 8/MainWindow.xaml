@@ -71,7 +71,7 @@ Loaded="Window_Loaded" Closing="Window_Closing">
 
 
         <TextBlock Grid.Row="5" TextWrapping="Wrap" Foreground="Gray">
-Tip: Default hotkey is Ctrl+F6. Recording waits 1.5s after you press Record so you can move to the target window. Running the clicker may be flagged by games/anti-cheat software.
+Tip: Default hotkey is for AutoClicker is (Ctrl+F6). Fixed hotkey for recording is (CTRL + ALT + R) Recording waits 1.5s after you press Record so you can move to the target window. Running the clicker may be flagged by games/anti-cheat software.
         </TextBlock>
     </Grid>
 </Window>

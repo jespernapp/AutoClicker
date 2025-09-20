@@ -43,6 +43,8 @@ namespace AutoClicker
 
         [DllImport("user32.dll", SetLastError = true)]
         private static extern bool RegisterHotKey(IntPtr hwnd, int id, uint fsModifiers, uint vk);
+        private const int HOTKEY_ID_RECORD = 9001; // For recording (Ctrl+Alt+R)
+        private const int HOTKEY_ID_PLAY = 9002;   // For playback (Ctrl+Alt+P)
 
         [DllImport("user32.dll", SetLastError = true)]
         private static extern bool UnregisterHotKey(IntPtr hwnd, int id);
@@ -80,6 +82,10 @@ namespace AutoClicker
             ChkCtrl.IsChecked = true;
 
             RegisterHotKeyFromUI();
+
+            //Hotkey for starting/stopping recording (Ctrl+Alt+R)
+            RegisterHotKey(_windowHandle, HOTKEY_ID_RECORD, MOD_CONTROL | MOD_ALT, (uint)KeyInterop.VirtualKeyFromKey(Key.R));
+            RegisterHotKey(_windowHandle, HOTKEY_ID_PLAY, MOD_CONTROL | MOD_ALT, (uint)KeyInterop.VirtualKeyFromKey(Key.P));
 
             // initialize macro UI state (if these controls exist in XAML)
             try
@@ -140,6 +146,32 @@ namespace AutoClicker
                 {
                     Dispatcher.Invoke(ToggleStartStop);
                     handled = true;
+                }
+                else if (id == HOTKEY_ID_RECORD)
+                {
+                    if (BtnRecord.IsEnabled)
+                    {
+                        Dispatcher.Invoke(() => BtnRecord_Click(BtnRecord, null));
+                        handled = true;
+                    }
+                    else
+                    {
+                        Dispatcher.Invoke(() => BtnStop_Click(BtnStop, null));
+                        handled = true;
+                    }
+                }
+                else if (id == HOTKEY_ID_PLAY)
+                {
+                    if (BtnPlay.IsEnabled)
+                    {
+                        Dispatcher.Invoke(() => BtnPlay_Click(BtnPlay, null));
+                        handled = true;
+                    }
+                    else
+                    {
+                        Dispatcher.Invoke(() => BtnStop_Click(BtnStop, null));
+                        handled = true;
+                    }
                 }
             }
             return IntPtr.Zero;
@@ -244,7 +276,8 @@ namespace AutoClicker
                 IsDown = true
             };
             _macroEvents.Add(ev);
-            Dispatcher.Invoke(() => {
+            Dispatcher.Invoke(() =>
+            {
                 try { LstEvents.Items.Add(FormatEvent(ev)); } catch { }
             });
         }
@@ -260,7 +293,8 @@ namespace AutoClicker
                 IsDown = false
             };
             _macroEvents.Add(ev);
-            Dispatcher.Invoke(() => {
+            Dispatcher.Invoke(() =>
+            {
                 try { LstEvents.Items.Add(FormatEvent(ev)); } catch { }
             });
         }
@@ -426,6 +460,8 @@ namespace AutoClicker
         private void Window_Closing(object sender, System.ComponentModel.CancelEventArgs e)
         {
             UnregisterHotKey();
+            UnregisterHotKey(_windowHandle, HOTKEY_ID_RECORD);
+            UnregisterHotKey(_windowHandle, HOTKEY_ID_PLAY);
             if (_source != null) _source.RemoveHook(HwndHook);
             if (_cts != null) _cts.Cancel();
 
