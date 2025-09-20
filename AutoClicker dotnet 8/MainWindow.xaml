@@ -1,16 +1,24 @@
 ﻿<Window x:Class="AutoClicker.MainWindow"
-        xmlns="http://schemas.microsoft.com/winfx/2006/xaml/presentation"
-        xmlns:x="http://schemas.microsoft.com/winfx/2006/xaml"
-        Title="Autoclicker" Height="270" Width="420"
-        Loaded="Window_Loaded" Closing="Window_Closing">
+xmlns="http://schemas.microsoft.com/winfx/2006/xaml/presentation"
+xmlns:x="http://schemas.microsoft.com/winfx/2006/xaml"
+Title="Autoclicker &amp; Macro Recorder" Height="520" Width="540"
+Loaded="Window_Loaded" Closing="Window_Closing">
     <Grid Margin="10">
         <Grid.RowDefinitions>
             <RowDefinition Height="Auto"/>
+            <!-- interval -->
             <RowDefinition Height="Auto"/>
+            <!-- button + hold -->
             <RowDefinition Height="Auto"/>
+            <!-- start/stop + status -->
             <RowDefinition Height="Auto"/>
+            <!-- hotkey -->
+            <RowDefinition Height="Auto"/>
+            <!-- macro group -->
             <RowDefinition Height="*"/>
+            <!-- tip / filler -->
         </Grid.RowDefinitions>
+
 
         <StackPanel Orientation="Horizontal" Grid.Row="0" Margin="0,0,0,8">
             <TextBlock VerticalAlignment="Center" Margin="0,0,8,0">Interval (ms):</TextBlock>
@@ -18,16 +26,19 @@
             <TextBlock VerticalAlignment="Center" Margin="12,0,8,0">Min 1 ms</TextBlock>
         </StackPanel>
 
+
         <StackPanel Orientation="Horizontal" Grid.Row="1" Margin="0,0,0,8">
             <TextBlock VerticalAlignment="Center" Margin="0,0,8,0">Mouse button:</TextBlock>
             <ComboBox x:Name="CmbButton" Width="120"/>
             <CheckBox x:Name="ChkHold" Content="Hold instead of click" Margin="12,0,0,0"/>
         </StackPanel>
 
+
         <StackPanel Orientation="Horizontal" Grid.Row="2" Margin="0,0,0,8">
             <Button x:Name="BtnStartStop" Width="90" Click="BtnStartStop_Click">Start</Button>
             <TextBlock x:Name="TxtStatus" VerticalAlignment="Center" Margin="12,0,0,0">Stopped</TextBlock>
         </StackPanel>
+
 
         <GroupBox Header="Toggle hotkey" Grid.Row="3" Margin="0,0,0,8">
             <StackPanel Orientation="Vertical" Margin="8">
@@ -44,8 +55,23 @@
             </StackPanel>
         </GroupBox>
 
-        <TextBlock Grid.Row="4" TextWrapping="Wrap" Foreground="Gray">
-            Tip: Default hotkey is Ctrl+F6. Running the clicker may be flagged by games/anti-cheat software.
+
+        <GroupBox Header="Macro recorder" Grid.Row="4" Margin="0,0,0,8">
+            <StackPanel Margin="8">
+                <StackPanel Orientation="Horizontal" Margin="0,0,0,8">
+                    <Button x:Name="BtnRecord" Width="90" Click="BtnRecord_Click">Record</Button>
+                    <Button x:Name="BtnStop" Width="90" Margin="8,0,0,0" Click="BtnStop_Click">Stop</Button>
+                    <Button x:Name="BtnPlay" Width="90" Margin="8,0,0,0" Click="BtnPlay_Click">Play</Button>
+                    <Button x:Name="BtnSave" Width="90" Margin="8,0,0,0" Click="BtnSave_Click">Save</Button>
+                    <Button x:Name="BtnLoad" Width="90" Margin="8,0,0,0" Click="BtnLoad_Click">Load</Button>
+                </StackPanel>
+                <ListBox x:Name="LstEvents" Height="140"/>
+            </StackPanel>
+        </GroupBox>
+
+
+        <TextBlock Grid.Row="5" TextWrapping="Wrap" Foreground="Gray">
+Tip: Default hotkey is Ctrl+F6. Recording waits 1.5s after you press Record so you can move to the target window. Running the clicker may be flagged by games/anti-cheat software.
         </TextBlock>
     </Grid>
 </Window>

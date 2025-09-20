@@ -1,26 +1,20 @@
-﻿using System;
+﻿// MainWindow.xaml.cs
+using System;
 using System.Collections.Generic;
-using System.Linq;
+using System.IO;
 using System.Runtime.InteropServices;
-using System.Text;
 using System.Threading;
 using System.Threading.Tasks;
 using System.Windows;
-using System.Windows.Controls;
-using System.Windows.Data;
-using System.Windows.Documents;
-using System.Windows.Input;
 using System.Windows.Interop;
-using System.Windows.Media;
-using System.Windows.Media.Imaging;
-using System.Windows.Navigation;
-using System.Windows.Shapes;
+using System.Windows.Input;
+using Gma.System.MouseKeyHook; // NuGet: Gma.System.MouseKeyHook
+using System.Text.Json;
+using Microsoft.Win32;
+using System.Windows.Forms;
 
 namespace AutoClicker
 {
-    /// <summary>
-    /// Interaction logic for MainWindow.xaml
-    /// </summary>
     public partial class MainWindow : Window
     {
         private const int HOTKEY_ID = 9000;
@@ -44,11 +38,20 @@ namespace AutoClicker
         private const uint MOUSEEVENTF_MIDDLEDOWN = 0x0020;
         private const uint MOUSEEVENTF_MIDDLEUP = 0x0040;
 
+        [DllImport("user32.dll")]
+        private static extern bool SetCursorPos(int X, int Y);
+
         [DllImport("user32.dll", SetLastError = true)]
         private static extern bool RegisterHotKey(IntPtr hwnd, int id, uint fsModifiers, uint vk);
 
         [DllImport("user32.dll", SetLastError = true)]
         private static extern bool UnregisterHotKey(IntPtr hwnd, int id);
+
+        // recorder/playback fields
+        private IKeyboardMouseEvents _globalHook;
+        private List<MacroEvent> _macroEvents = new List<MacroEvent>();
+        private DateTime _recordStart;
+        private CancellationTokenSource _playbackCts;
 
         public MainWindow()
         {
@@ -77,10 +80,20 @@ namespace AutoClicker
             ChkCtrl.IsChecked = true;
 
             RegisterHotKeyFromUI();
-        }
-        private void BtnStartStop_Click(object sender, RoutedEventArgs e) => ToggleStartStop();
 
+            // initialize macro UI state (if these controls exist in XAML)
+            try
+            {
+                BtnStop.IsEnabled = false;
+                BtnPlay.IsEnabled = false;
+            }
+            catch { /* ignore if controls missing */ }
+        }
+
+        private void BtnStartStop_Click(object sender, RoutedEventArgs e) => ToggleStartStop();
         private void BtnApplyHotkey_Click(object sender, RoutedEventArgs e) => RegisterHotKeyFromUI();
+
+        // Replace all ambiguous usages of MessageBox.Show with System.Windows.MessageBox.Show
 
         private bool RegisterHotKeyFromUI()
         {
@@ -93,7 +106,7 @@ namespace AutoClicker
 
             if (CmbHotkeyKey.SelectedItem == null)
             {
-                MessageBox.Show("Select a hotkey first.");
+                System.Windows.MessageBox.Show("Select a hotkey first.");
                 return false;
             }
 
@@ -103,7 +116,7 @@ namespace AutoClicker
             bool ok = RegisterHotKey(_windowHandle, HOTKEY_ID, modifiers, vk);
             if (!ok)
             {
-                MessageBox.Show("Failed to register hotkey. It might be already in use.");
+                System.Windows.MessageBox.Show("Failed to register hotkey. It might be already in use.");
                 TxtStatus.Text = "Hotkey registration failed.";
                 return false;
             }
@@ -135,7 +148,7 @@ namespace AutoClicker
         private void ToggleStartStop()
         {
             if (_isRunning) StopClicking();
-            else StartClicking();
+            else _ = StartClicking();
         }
 
         private async Task StartClicking()
@@ -144,7 +157,7 @@ namespace AutoClicker
 
             if (!int.TryParse(TxtInterval.Text, out int interval) || interval < 1)
             {
-                MessageBox.Show("Please enter a valid interval (>= 1 ms).");
+                System.Windows.MessageBox.Show("Please enter a valid interval (>= 1 ms).");
                 return;
             }
 
@@ -167,7 +180,7 @@ namespace AutoClicker
                 {
                     while (!token.IsCancellationRequested)
                     {
-                        DoClick(button, hold);
+                        DoClickInternal(button, hold);
                         await Task.Delay(interval, token);
                     }
                 }
@@ -190,7 +203,7 @@ namespace AutoClicker
             _cts.Cancel();
         }
 
-        private void DoClick(string button, bool hold)
+        private void DoClickInternal(string button, bool hold)
         {
             switch (button)
             {
@@ -214,11 +227,225 @@ namespace AutoClicker
             }
             Thread.Sleep(10);
         }
+
+        // --- Recorder / Playback utilities ---
+
+        private string FormatEvent(MacroEvent ev) =>
+            $"{(ev.IsDown ? "Down" : "Up")} {ev.Button} at ({ev.X},{ev.Y}) +{ev.DelayMs} ms";
+
+        private void GlobalHook_MouseDownExt(object sender, MouseEventExtArgs e)
+        {
+            var ev = new MacroEvent
+            {
+                DelayMs = (int)(DateTime.UtcNow - _recordStart).TotalMilliseconds,
+                X = e.X,
+                Y = e.Y,
+                Button = e.Button.ToString(),
+                IsDown = true
+            };
+            _macroEvents.Add(ev);
+            Dispatcher.Invoke(() => {
+                try { LstEvents.Items.Add(FormatEvent(ev)); } catch { }
+            });
+        }
+
+        private void GlobalHook_MouseUpExt(object sender, MouseEventExtArgs e)
+        {
+            var ev = new MacroEvent
+            {
+                DelayMs = (int)(DateTime.UtcNow - _recordStart).TotalMilliseconds,
+                X = e.X,
+                Y = e.Y,
+                Button = e.Button.ToString(),
+                IsDown = false
+            };
+            _macroEvents.Add(ev);
+            Dispatcher.Invoke(() => {
+                try { LstEvents.Items.Add(FormatEvent(ev)); } catch { }
+            });
+        }
+
+        private async void BtnRecord_Click(object sender, RoutedEventArgs e)
+        {
+            BtnRecord.IsEnabled = false;
+            BtnStop.IsEnabled = true;
+            BtnPlay.IsEnabled = false;
+            try { LstEvents.Items.Clear(); } catch { }
+            TxtStatus.Text = "Recording will start in 1.5s. Move to the target window.";
+            await Task.Delay(1500);
+
+            _macroEvents.Clear();
+            _recordStart = DateTime.UtcNow;
+            _globalHook = Hook.GlobalEvents();
+            _globalHook.MouseDownExt += GlobalHook_MouseDownExt;
+            _globalHook.MouseUpExt += GlobalHook_MouseUpExt;
+            TxtStatus.Text = "Recording...";
+        }
+
+        private void BtnStop_Click(object sender, RoutedEventArgs e)
+        {
+            // If recording, stop recording
+            if (_globalHook != null)
+            {
+                _globalHook.MouseDownExt -= GlobalHook_MouseDownExt;
+                _globalHook.MouseUpExt -= GlobalHook_MouseUpExt;
+                _globalHook.Dispose();
+                _globalHook = null;
+
+                TxtStatus.Text = $"Recording stopped. {_macroEvents.Count} events recorded.";
+                BtnStop.IsEnabled = false;
+                BtnRecord.IsEnabled = true;
+                BtnPlay.IsEnabled = _macroEvents.Count > 0;
+                return;
+            }
+
+            // If playback is running, cancel it
+            if (_playbackCts != null)
+            {
+                _playbackCts.Cancel();
+                TxtStatus.Text = "Playback cancelled by user.";
+            }
+        }
+
+        private async void BtnPlay_Click(object sender, RoutedEventArgs e)
+        {
+            if (_macroEvents.Count == 0)
+            {
+                TxtStatus.Text = "No macro recorded/loaded.";
+                return;
+            }
+
+            BtnPlay.IsEnabled = false;
+            BtnRecord.IsEnabled = false;
+            BtnStop.IsEnabled = true;
+            TxtStatus.Text = "Playing macro...";
+
+            _playbackCts = new CancellationTokenSource();
+            var token = _playbackCts.Token;
+
+            try
+            {
+                int lastMs = 0;
+                foreach (var ev in _macroEvents)
+                {
+                    int wait = ev.DelayMs - lastMs;
+                    if (wait > 0) await Task.Delay(wait, token);
+
+                    SetCursorPos(ev.X, ev.Y);
+                    if (ev.IsDown) DoMouseDown(ev.Button);
+                    else DoMouseUp(ev.Button);
+
+                    lastMs = ev.DelayMs;
+                }
+                TxtStatus.Text = "Playback finished.";
+            }
+            catch (TaskCanceledException)
+            {
+                TxtStatus.Text = "Playback cancelled.";
+            }
+            finally
+            {
+                BtnPlay.IsEnabled = true;
+                BtnRecord.IsEnabled = true;
+                BtnStop.IsEnabled = false;
+                _playbackCts = null;
+            }
+        }
+
+        private void DoMouseDown(string button)
+        {
+            switch (button)
+            {
+                case "Left":
+                    mouse_event(MOUSEEVENTF_LEFTDOWN, 0, 0, 0, UIntPtr.Zero);
+                    break;
+                case "Right":
+                    mouse_event(MOUSEEVENTF_RIGHTDOWN, 0, 0, 0, UIntPtr.Zero);
+                    break;
+                case "Middle":
+                    mouse_event(MOUSEEVENTF_MIDDLEDOWN, 0, 0, 0, UIntPtr.Zero);
+                    break;
+            }
+        }
+
+        private void DoMouseUp(string button)
+        {
+            switch (button)
+            {
+                case "Left":
+                    mouse_event(MOUSEEVENTF_LEFTUP, 0, 0, 0, UIntPtr.Zero);
+                    break;
+                case "Right":
+                    mouse_event(MOUSEEVENTF_RIGHTUP, 0, 0, 0, UIntPtr.Zero);
+                    break;
+                case "Middle":
+                    mouse_event(MOUSEEVENTF_MIDDLEUP, 0, 0, 0, UIntPtr.Zero);
+                    break;
+            }
+        }
+
+        // Remove this using directive, as it causes ambiguity:
+        // using System.Windows.Forms;
+
+        // Use fully qualified names for OpenFileDialog and SaveFileDialog in BtnSave_Click and BtnLoad_Click:
+
+        private void BtnSave_Click(object sender, RoutedEventArgs e)
+        {
+            if (_macroEvents.Count == 0) { TxtStatus.Text = "No macro to save."; return; }
+
+            var dlg = new Microsoft.Win32.SaveFileDialog { Filter = "Macro files|*.json" };
+            if (dlg.ShowDialog() == true)
+            {
+                var json = JsonSerializer.Serialize(_macroEvents, new JsonSerializerOptions { WriteIndented = true });
+                File.WriteAllText(dlg.FileName, json);
+                TxtStatus.Text = $"Saved macro to {dlg.FileName}";
+            }
+        }
+
+        private void BtnLoad_Click(object sender, RoutedEventArgs e)
+        {
+            var dlg = new Microsoft.Win32.OpenFileDialog { Filter = "Macro files|*.json" };
+            if (dlg.ShowDialog() == true)
+            {
+                try
+                {
+                    var json = File.ReadAllText(dlg.FileName);
+                    _macroEvents = JsonSerializer.Deserialize<List<MacroEvent>>(json) ?? new List<MacroEvent>();
+                    try { LstEvents.Items.Clear(); } catch { }
+                    foreach (var ev in _macroEvents) try { LstEvents.Items.Add(FormatEvent(ev)); } catch { }
+                    TxtStatus.Text = $"Loaded {_macroEvents.Count} events from {dlg.FileName}";
+                    BtnPlay.IsEnabled = _macroEvents.Count > 0;
+                }
+                catch (Exception ex)
+                {
+                    TxtStatus.Text = $"Failed to load: {ex.Message}";
+                }
+            }
+        }
+
         private void Window_Closing(object sender, System.ComponentModel.CancelEventArgs e)
         {
             UnregisterHotKey();
             if (_source != null) _source.RemoveHook(HwndHook);
             if (_cts != null) _cts.Cancel();
+
+            if (_globalHook != null)
+            {
+                _globalHook.Dispose();
+                _globalHook = null;
+            }
+
+            if (_playbackCts != null) _playbackCts.Cancel();
         }
+    }
+
+    // Simple MacroEvent class
+    public class MacroEvent
+    {
+        public int DelayMs { get; set; } = 0; // ms since start (or previous event depending on usage)
+        public int X { get; set; }
+        public int Y { get; set; }
+        public string Button { get; set; } = "Left";
+        public bool IsDown { get; set; } = true;
     }
 }
